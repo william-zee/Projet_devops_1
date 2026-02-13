@@ -1,0 +1,75 @@
+# --- 1. BASE DE DONNÉES (POSTGRES) ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-db
+spec:
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:13
+        env:
+        - name: POSTGRES_PASSWORD
+          value: "password"
+        ports:
+        - containerPort: 5432
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+spec:
+  selector:
+    app: postgres
+  ports:
+  - port: 5432
+---
+# --- 2. TON DASHBOARD (PYTHON) ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dashboard
+  template:
+    metadata:
+      labels:
+        app: dashboard
+    spec:
+      containers:
+      - name: dashboard
+        # Ici on met le nom simple qu'on va construire juste après
+        image: pollution-dashboard:v1
+        # TRÈS IMPORTANT : Dit à Kubernetes de ne pas chercher sur internet
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 5000
+        env:
+        # Connexion à la base de données définie plus haut
+        - name: DB_HOST
+          value: "postgres-service"
+        - name: DB_PASSWORD
+          value: "password"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard-service
+spec:
+  selector:
+    app: dashboard
+  type: NodePort
+  ports:
+    - port: 80
+      targetPort: 5000
+      nodePort: 30007

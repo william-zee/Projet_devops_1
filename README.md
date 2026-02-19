@@ -1,279 +1,223 @@
 # 🌍 Rapport Technique & Guide de Déploiement : Pollution Dashboard
 
+**Auteur :** William [Nom de Famille]  
+**Projet :** DevOps for SWE – ESIEE 2026  
+
+---
+
 ## 1. Résumé du Projet
 
-Ce projet consiste en la conception et le déploiement d'une application web orientée données (Dashboard de pollution) utilisant une architecture Cloud Native.  
+Ce projet consiste en la conception et le déploiement d'une application web orientée données (Dashboard de pollution) utilisant une architecture Cloud Native.
 
-L'objectif principal était de mettre en place un pipeline CI/CD automatisé, de gérer des volumes de données importants (Git LFS) et d'assurer un déploiement robuste sur AWS.
+L'objectif principal est de :
 
-L'application permet de visualiser des données géographiques de pollution stockées dans une base de données relationnelle et traitées via un backend Python (Flask/Dash).
+- Mettre en place un pipeline CI/CD automatisé
+- Gérer des volumes de données importants via Git LFS
+- Déployer une infrastructure robuste sur AWS
+- Assurer la reproductibilité complète du projet
+
+L’application permet de visualiser des données géographiques de pollution stockées dans une base PostgreSQL et traitées via un backend Python (Flask/Dash).
 
 ---
 
 ## 2. Architecture Technique
 
-L'infrastructure repose sur AWS et respecte les contraintes du Free Tier.
+L'infrastructure repose sur Amazon Web Services (AWS) afin de garantir disponibilité, scalabilité et séparation des responsabilités.
 
-- **Application (Container)** : Python Flask/Dash conteneurisé avec Docker  
-- **Base de Données** : AWS RDS PostgreSQL (persistante et managée)  
-- **Registre d’Images** : AWS ECR (registre privé)  
-- **Serveur de Production** : AWS EC2 (t3.micro)  
-- **Gestion des Données Volumineuses** : Git LFS (>800 Mo de CSV)  
+### Composants :
+
+- **Application** : Python (Flask/Dash) conteneurisée avec Docker
+- **Base de données** : AWS RDS (PostgreSQL)
+- **Registre d’images** : AWS ECR
+- **Serveur de déploiement** : AWS EC2 (t3.micro)
+- **Versioning données lourdes** : Git LFS (>800 Mo de CSV)
+
+Architecture logique :
+
+Utilisateur → EC2 (Docker Container) → RDS PostgreSQL  
+CI/CD → GitHub Actions → AWS ECR → EC2
 
 ---
 
 ## 3. Pipeline CI/CD (GitHub Actions)
 
-Déclenchement automatique à chaque `push` sur la branche `main`.
+Déclenché automatiquement à chaque push sur la branche `main`.
 
-### Phase CI
+### Phase CI – Intégration Continue
 
-- Checkout du code + LFS (`lfs: true`)
-- Build de l’image Docker
+- Checkout du dépôt avec `lfs: true`
+- Récupération complète des fichiers CSV via Git LFS
+- Build Docker avec Dockerfile optimisé
 - Validation du build
 
-### Phase CD
+### Phase CD – Livraison Continue
 
-- Authentification AWS via Secrets GitHub
-- Push de l’image vers ECR (`latest`)
-- Région utilisée : `eu-north-1`
+- Authentification sécurisée via GitHub Secrets
+- Push de l’image Docker taguée `latest` vers AWS ECR (région `eu-north-1`)
 
 ---
 
-## 4. Configuration Initiale (Obligatoire)
+## 4. Prérequis
 
-Avant tout déploiement :
+Cette section liste l’ensemble des dépendances nécessaires pour reproduire le projet.
+
+---
+
+### 4.1 Prérequis Généraux
+
+- Git
+- Git LFS
+- Docker
+- Python 3 (pour test local hors container)
+- Compte GitHub
+- Accès Internet
+
+Vérification :
 
 ```bash
-git clone https://github.com/votre-repo/projet-pollution.git
-cd projet-pollution
+git --version
+git lfs --version
+docker --version
+python3 --version
+```
 
+---
+
+### 4.2 Déploiement Local (optionnel)
+
+- MicroK8s (si utilisation Kubernetes)
+- Minimum 4 Go RAM recommandé
+
+```bash
+microk8s status
+sudo microk8s kubectl version
+```
+
+---
+
+### 4.3 Prérequis AWS (Production)
+
+Compte AWS configuré avec :
+
+#### IAM
+- Access Key
+- Secret Access Key
+- Permissions suffisantes (AdministratorAccess ou équivalent restreint)
+
+#### Amazon RDS
+- Instance PostgreSQL (Free Tier)
+- Port 5432 ouvert
+- Security Group autorisant uniquement le Security Group de l’EC2
+
+⚠️ En production réelle, éviter `0.0.0.0/0`.
+
+#### Amazon ECR
+- Dépôt privé nommé `pollution-dashboard`
+
+#### Amazon EC2
+- Instance Amazon Linux 2023 (t3.micro)
+- Port 5000 ouvert dans le Security Group
+
+---
+
+## 5. Configuration Initiale
+
+### 5.1 Clonage du dépôt
+
+```bash
+git clone https://github.com/wilfried-lafaye/dashboard-devops-aws
+cd projet-pollution
+```
+
+### 5.2 Récupération des données lourdes (CRITIQUE)
+
+```bash
 git lfs install
 git lfs pull
 ```
 
- Sans `git lfs pull`, l’application ne pourra pas accéder aux fichiers CSV.
+Sans cette étape, l’application ne peut pas fonctionner.
 
 ---
 
-#  5. Déploiement Local avec MicroK8s
+## 6. Installation Docker sur EC2
 
-## 5.1 Build Docker
-
-```bash
-DOCKER_BUILDKIT=0 docker build -t pollution-dashboard:local .
-```
-
-Vérification :
+Connexion SSH :
 
 ```bash
-docker images
+ssh ec2-user@IP_PUBLIQUE
 ```
+
+Installation Docker :
+
+```bash
+sudo yum update -y
+sudo yum install docker -y
+sudo systemctl start docker
+sudo usermod -aG docker ec2-user
+```
+
+Reconnecter la session SSH après ajout au groupe docker.
 
 ---
 
-## 5.2 Démarrage MicroK8s
+## 7. Build et Push vers AWS ECR
+
+Connexion à ECR :
 
 ```bash
-sudo microk8s start
-sudo microk8s enable dns storage
+aws ecr get-login-password --region eu-north-1 | \
+docker login --username AWS --password-stdin <account-id>.dkr.ecr.eu-north-1.amazonaws.com
 ```
 
----
-
-## 5.3 Import de l’image dans MicroK8s
-
-Commande clé :
-
-```bash
-docker save pollution-dashboard:local | sudo microk8s images import -
-```
-
-Vérification :
-
-```bash
-sudo microk8s images ls | grep pollution
-```
-
----
-
-## 5.4 Déploiement Kubernetes
-
-```bash
-sudo microk8s kubectl apply -f k8s_app.yaml
-```
-
-Vérification :
-
-```bash
-sudo microk8s kubectl get pods
-sudo microk8s kubectl get svc
-```
-
----
-
-## 5.5 Debug
-
-Logs :
-
-```bash
-sudo microk8s kubectl logs -f <NOM_DU_POD>
-```
-
-Test HTTP :
-
-```bash
-curl -I http://localhost:30007
-```
-
-Port forwarding si nécessaire :
-
-```bash
-sudo microk8s kubectl port-forward service/dashboard-service 8080:80
-```
-
-Accès :
-
-```
-http://localhost:8080
-```
-
----
-
-# ☁️ 6. Déploiement Production sur AWS
-
-## 6.1 Installation AWS CLI
-
-```bash
-sudo apt install awscli -y
-aws configure
-```
-
----
-
-## 6.2 Authentification ECR
-
-```bash
-aws ecr get-login-password --region <REGION> | \
-docker login --username AWS --password-stdin \
-<ID_AWS>.dkr.ecr.<REGION>.amazonaws.com
-```
-
----
-
-## 6.3 Build Image
+Build image :
 
 ```bash
 docker build -t pollution-dashboard .
 ```
 
----
-
-## 6.4 Tag Image
+Tag image :
 
 ```bash
 docker tag pollution-dashboard:latest \
-<ID_AWS>.dkr.ecr.<REGION>.amazonaws.com/pollution-dashboard:latest
+<account-id>.dkr.ecr.eu-north-1.amazonaws.com/pollution-dashboard:latest
+```
+
+Push vers ECR :
+
+```bash
+docker push <account-id>.dkr.ecr.eu-north-1.amazonaws.com/pollution-dashboard:latest
 ```
 
 ---
 
-## 6.5 Push vers ECR
+## 8. Lancement sur EC2
 
 ```bash
-docker push <ID_AWS>.dkr.ecr.<REGION>.amazonaws.com/pollution-dashboard:latest
+docker run -d -p 5000:5000 \
+-e DB_HOST=<rds-endpoint> \
+-e DB_USER=<username> \
+-e DB_PASSWORD=<password> \
+-e DB_NAME=<database> \
+pollution-dashboard
 ```
 
----
+Application accessible via :
 
-## 6.6 Déploiement sur EC2
-
-Connexion via EC2 Instance Connect.
-
-Authentification Docker :
-
-```bash
-aws ecr get-login-password --region <REGION> | \
-sudo docker login --username AWS --password-stdin \
-<ID_AWS>.dkr.ecr.<REGION>.amazonaws.com
-```
-
-Lancement du conteneur :
-
-```bash
-sudo docker run -d \
-  --name pollution-app \
-  -p 5000:5000 \
-  -e DB_HOST='votre-db-endpoint.rds.amazonaws.com' \
-  -e DB_NAME='postgres' \
-  -e DB_USER='postgres' \
-  -e DB_PASSWORD='votre_mot_de_passe_secret' \
-  <ID_AWS>.dkr.ecr.<REGION>.amazonaws.com/pollution-dashboard:latest
-```
-
----
-
-## 6.7 Accès à l’Application
-
-```
 http://<IP_PUBLIQUE_EC2>:5000/static/FINAL_dashboard.html
-```
 
 ---
 
-# 7. Points Techniques Importants
+## 9. Contraintes Techniques
 
-### Gestion des Données
-
-- Données volumineuses (~800 Mo)
-- Versionnement via Git LFS
-- Inclusion dans l’image Docker
-
-### Persistance
-
-- Base PostgreSQL sur AWS RDS
-- Décorrélée du cycle de vie du conteneur
-- Garantit la persistance après redémarrage
-
-### Adaptation Free Tier
-
-Un cluster Kubernetes complet sur EC2 t3.micro provoque une saturation mémoire.  
-La production utilise donc Docker Engine seul pour garantir stabilité et performance.
+- Volume CSV : ~800 Mo
+- Build Docker long (plusieurs minutes)
+- Kubernetes complet non viable sur t3.micro
+- Architecture adaptée au Free Tier AWS
 
 ---
 
-# 8. Architecture Simplifiée
 
-```
-Utilisateur
-    ↓
-EC2 (Docker Container)
-    ↓
-Application Flask/Dash
-    ↓
-AWS RDS PostgreSQL
-```
-
-CI/CD :
-
-```
-GitHub → GitHub Actions → Build Docker → Push ECR → EC2 Pull & Run
-```
-
----
-
-# 9. Conclusion
-
-Ce projet met en œuvre une chaîne DevOps complète :
-
-- Conteneurisation (Docker)
-- Orchestration (Kubernetes local)
-- CI/CD automatisé (GitHub Actions)
-- Cloud Computing (AWS EC2, ECR, RDS)
-- Gestion de données volumineuses (Git LFS)
-- Persistance managée
-
-L’architecture respecte les principes Cloud Native tout en s’adaptant aux contraintes du Free Tier AWS.
 
 
 

@@ -139,8 +139,129 @@ git lfs pull
 Sans cette étape, l’application ne peut pas fonctionner.
 
 ---
+---
 
-## 6. Installation Docker sur EC2
+## 6. Déploiement Local avec MicroK8s (Kubernetes)
+
+Cette section permet de tester l’architecture Cloud Native en environnement local.
+
+---
+
+### 6.1 Préparation du Cluster
+
+C’est ici qu’on prépare l’environnement pour exécuter l’application.
+
+Démarrage du cluster :
+
+```bash
+sudo microk8s start
+```
+
+Activation des services essentiels (réseau + stockage) :
+
+```bash
+sudo microk8s enable dns storage
+```
+
+---
+
+### 6.2 Import de l’image Docker dans MicroK8s
+
+⚠️ Étape la plus importante.
+
+MicroK8s possède son propre registre interne.  
+Il faut donc transférer l’image depuis Docker.
+
+```bash
+docker save pollution-dashboard:local | sudo microk8s images import -
+```
+
+Vérification que l’image est bien présente :
+
+```bash
+sudo microk8s images ls | grep pollution
+```
+
+---
+
+### 6.3 Déploiement avec kubectl
+
+Lancement de l’application et de la base de données :
+
+```bash
+sudo microk8s kubectl apply -f k8s_app.yaml
+```
+
+Vérifier que les pods sont actifs :
+
+```bash
+sudo microk8s kubectl get pods
+```
+
+Les pods doivent être en état `Running`.
+
+Afficher les services exposés :
+
+```bash
+sudo microk8s kubectl get svc
+```
+
+Suppression d’un déploiement (reset propre) :
+
+```bash
+sudo microk8s kubectl delete deployment NOM_DU_DEPLOYMENT
+```
+
+---
+
+### 6.4 Vérification et Débogage
+
+Afficher les logs en temps réel :
+
+```bash
+sudo microk8s kubectl logs -f NOM_DU_POD
+```
+
+Très utile pour vérifier :
+- Connexion à la base PostgreSQL
+- Erreurs Python
+- Problèmes réseau
+
+---
+
+Tester si le service répond :
+
+```bash
+curl -I http://localhost:30007
+```
+
+Si la réponse est :
+
+```
+HTTP/1.1 200 OK
+```
+
+Alors l’application fonctionne.
+
+---
+
+### 6.5 Port Forward (Solution alternative)
+
+Si le NodePort ne fonctionne pas ou si le port est bloqué :
+
+```bash
+sudo microk8s kubectl port-forward service/dashboard-service 8080:80
+```
+
+Application accessible via :
+
+http://localhost:8080
+
+---
+
+
+
+## 7. Installation Docker sur EC2
 
 Connexion SSH :
 
@@ -161,7 +282,7 @@ Reconnecter la session SSH après ajout au groupe docker.
 
 ---
 
-## 7. Build et Push vers AWS ECR
+## 8. Build et Push vers AWS ECR
 
 Connexion à ECR :
 
@@ -191,7 +312,7 @@ docker push <account-id>.dkr.ecr.eu-north-1.amazonaws.com/pollution-dashboard:la
 
 ---
 
-## 8. Lancement sur EC2
+## 9. Lancement sur EC2
 
 ```bash
 docker run -d -p 5000:5000 \
@@ -208,7 +329,7 @@ http://<IP_PUBLIQUE_EC2>:5000/static/FINAL_dashboard.html
 
 ---
 
-## 9. Contraintes Techniques
+## 10. Contraintes Techniques
 
 - Volume CSV : ~800 Mo
 - Build Docker long (plusieurs minutes)

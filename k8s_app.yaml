@@ -73,6 +73,89 @@
 #     - port: 80
 #       targetPort: 5000
 #       nodePort: 30007
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: pollution-dashboard
+# spec:
+#   replicas: 1
+#   selector:
+#     matchLabels:
+#       app: dashboard
+#   template:
+#     metadata:
+#       labels:
+#         app: dashboard
+#     spec:
+#       containers:
+#       - name: dashboard
+#         # 1. C'est ICI qu'on met ton adresse ECR AWS (Le Garage)
+#         image: 717892306191.dkr.ecr.eu-north-1.amazonaws.com/pollution-dashboard:latest
+#         ports:
+#         - containerPort: 5000
+#         env:
+#         # 2. On connecte à ta VRAIE base de données RDS AWS
+#         - name: DB_HOST
+#           value: "pollution-db.crekogekug5m.eu-north-1.rds.amazonaws.com"
+#         - name: DB_NAME
+#           value: "postgres"
+#         - name: DB_USER
+#           value: "postgres"
+#         - name: DB_PASSWORD
+#           value: "MonSuperMotDePasse123!"
+# ---
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: dashboard-service
+# spec:
+#   type: NodePort
+#   selector:
+#     app: dashboard
+#   ports:
+#     - port: 80
+#       targetPort: 5000
+#       nodePort: 30007
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: pollution-dashboard
+# spec:
+#   replicas: 1
+#   selector:
+#     matchLabels:
+#       app: dashboard
+#   template:
+#     metadata:
+#       labels:
+#         app: dashboard
+#     spec:
+#       containers:
+#       - name: dashboard
+#         # ON UTILISE LE NOM DE L'IMAGE QUE TU VIENS D'IMPORTER
+#         image: pollution-dashboard:local
+#         # OBLIGATOIRE : Dit à K8s de ne pas aller sur internet
+#         imagePullPolicy: Never
+#         ports:
+#         - containerPort: 5000
+#         env:
+#         - name: DB_HOST
+#           value: "postgres-service"
+#         - name: DB_PASSWORD
+#           value: "password"
+# ---
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: dashboard-service
+# spec:
+#   selector:
+#     app: dashboard
+#   type: NodePort
+#   ports:
+#     - port: 80
+#       targetPort: 5000
+#       nodePort: 30007
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -87,22 +170,30 @@ spec:
       labels:
         app: dashboard
     spec:
+      # 🔑 IMPORTANT : C'est ici qu'on donne la clé pour entrer dans ECR
+      imagePullSecrets:
+      - name: regcred
       containers:
       - name: dashboard
-        # 1. C'est ICI qu'on met ton adresse ECR AWS (Le Garage)
+        # Ton image sur ECR (Vérifie que c'est bien la bonne région/ID)
         image: 717892306191.dkr.ecr.eu-north-1.amazonaws.com/pollution-dashboard:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 5000
         env:
-        # 2. On connecte à ta VRAIE base de données RDS AWS
+        # Ta vraie base de données RDS
         - name: DB_HOST
           value: "pollution-db.crekogekug5m.eu-north-1.rds.amazonaws.com"
         - name: DB_NAME
           value: "postgres"
         - name: DB_USER
           value: "postgres"
-        - name: DB_PASSWORD
-          value: "MonSuperMotDePasse123!"
+        - - name: DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: db-secret
+                key: DB_PASSWORD
+
 ---
 apiVersion: v1
 kind: Service
